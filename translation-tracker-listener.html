@@ -1,0 +1,106 @@
+<script>
+    (function() {
+      // Prevent multiple initializations
+      if (window._translationTrackerInit) return;
+      window._translationTrackerInit = true;
+    
+      // Language code to name mapping (for backup method)
+      var langCodeToName = {
+        'zh-CN': 'Mandarin 普通话',
+        'zh-TW': 'Cantonese (廣東話)',
+        'ar': 'Arabic (عربى)',
+        'vi': 'Vietnamese',
+        'pa': 'Punjabi',
+        'hi': 'Hindi',
+        'el': 'Greek',
+        'it': 'Italian',
+        'es': 'Spanish',
+        'ne': 'Nepali'
+      };
+    
+      // Helper function to get language name from code
+      function getLanguageName(langCode) {
+        // Try to find it in the DOM first
+        var link = document.querySelector('.language-link[hreflang="' + langCode + '"]');
+        if (link) {
+          return link.textContent.trim().replace(/\s+/g, ' ');
+        }
+        // Fallback to mapping
+        return langCodeToName[langCode] || langCode;
+      }
+    
+      // Track translation event
+      function trackTranslation(langCode, langName, source) {
+        // Prevent duplicate tracking within a short time window
+        var now = Date.now();
+        var lastTrackKey = '_lastTranslationTrack';
+        var lastTrack = window[lastTrackKey];
+        
+        // Skip if same language was tracked in last 500ms (prevents duplicates)
+        if (lastTrack && 
+            lastTrack.langCode === langCode && 
+            lastTrack.timestamp > (now - 500)) {
+          return;
+        }
+        
+        window[lastTrackKey] = {
+          langCode: langCode,
+          timestamp: now
+        };
+        
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'event': 'page_translated',
+          'translation_language_code': langCode,
+          'translation_language_name': langName,
+          'translated_page_url': window.location.pathname,
+          'translated_page_title': document.title
+        });
+      }
+    
+      // Track clicks on language selector links
+      document.addEventListener('click', function(e) {
+        var link = e.target.closest('.language-link');
+        if (link) {
+          var langCode = link.getAttribute('hreflang');
+          var langName = link.textContent.trim().replace(/\s+/g, ' ');
+    
+          // Don't track if selecting English (that's reverting, not translating)
+          if (langCode && langCode !== 'en') {
+            trackTranslation(langCode, langName, 'click');
+          }
+        }
+      });
+    
+      // Backup: Detect via MutationObserver when Google Translate modifies <html>
+      if (window.MutationObserver) {
+        var observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'class') {
+              var oldClass = mutation.oldValue || '';
+              var newClass = document.documentElement.className || '';
+    
+              // Detect when 'translated-' class is added
+              if (oldClass.indexOf('translated-') === -1 &&
+                  newClass.indexOf('translated-') > -1) {
+    
+                var langCode = document.documentElement.lang;
+    
+                // Only track if not English and we have a valid code
+                if (langCode && langCode !== 'en') {
+                  var langName = getLanguageName(langCode);
+                  trackTranslation(langCode, langName, 'mutation');
+                }
+              }
+            }
+          });
+        });
+    
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeOldValue: true,
+          attributeFilter: ['class']
+        });
+      }
+    })();
+</script>
