@@ -43,11 +43,13 @@
           return;
         }
         
+        // Track the language code and timestamp
         window[lastTrackKey] = {
           langCode: langCode,
           timestamp: now
         };
         
+        // Push the event to the data layer
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push({
           'event': 'page_translated',
@@ -96,6 +98,7 @@
           });
         });
     
+        // Observe the document element for changes
         observer.observe(document.documentElement, {
           attributes: true,
           attributeOldValue: true,
