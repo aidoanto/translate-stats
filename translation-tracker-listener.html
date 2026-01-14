@@ -4,18 +4,27 @@
       if (window._translationTrackerInit) return;
       window._translationTrackerInit = true;
 
-      // Detect if translate feature is available on this page
-      var translateFeatureAvailable = !!(
-        document.querySelector('.switcher') || 
-        document.querySelector('.language-link')
-      );
+      // Detect if translate feature is available (wait for DOM to be ready)
+      function checkFeatureAvailability() {
+        var translateFeatureAvailable = !!(
+          document.querySelector('.switcher') || 
+          document.querySelector('.language-link')
+        );
 
-      // Push availability to data layer
-      window.dataLayer = window.dataLayer || [];
-      window.dataLayer.push({
-        'event': 'translate_feature_loaded',
-        'translate_feature_available': translateFeatureAvailable
-      });
+        // Push availability to data layer
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          'event': 'translate_feature_loaded',
+          'translate_feature_available': translateFeatureAvailable
+        });
+      }
+
+      // Run when DOM is ready (or immediately if already loaded)
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', checkFeatureAvailability);
+      } else {
+        checkFeatureAvailability();
+      }
     
       // Language code to name mapping (for backup method)
       var langCodeToName = {
@@ -38,7 +47,7 @@
         if (link) {
           return link.textContent.trim().replace(/\s+/g, ' ');
         }
-        // Fallback to mapping
+        // Fallback to mapping, or just use the code itself for unknown languages
         return langCodeToName[langCode] || langCode;
       }
     
