@@ -3,6 +3,19 @@
       // Prevent multiple initializations
       if (window._translationTrackerInit) return;
       window._translationTrackerInit = true;
+
+      // Detect if translate feature is available on this page
+      var translateFeatureAvailable = !!(
+        document.querySelector('.switcher') || 
+        document.querySelector('.language-link')
+      );
+
+      // Push availability to data layer
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        'event': 'translate_feature_loaded',
+        'translate_feature_available': translateFeatureAvailable
+      });
     
       // Language code to name mapping (for backup method)
       var langCodeToName = {
@@ -56,7 +69,8 @@
           'translation_language_code': langCode,
           'translation_language_name': langName,
           'translated_page_url': window.location.pathname,
-          'translated_page_title': document.title
+          'translated_page_title': document.title,
+          'translation_source': source
         });
       }
     

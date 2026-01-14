@@ -6,6 +6,8 @@ Track translation usage on lifeline.org.au using GTM and GA4 to answer:
 - What pages are being translated?
 - At what rate?
 - What languages are being translated into?
+- Is the translate feature available on each page?
+- Are users using our on-site feature or browser extensions?
 
 ## What We'll Track
 
@@ -16,17 +18,22 @@ Track translation usage on lifeline.org.au using GTM and GA4 to answer:
 | Language name | `Mandarin 普通话`, `Arabic (عربى)` |
 | Page URL | `/crisis-support/` |
 | Page title | `Crisis Support - Lifeline Australia` |
+| Translation source | `click` (on-site feature) or `mutation` (browser extension) |
+| Feature available | `true` or `false` (tracked via `translate_feature_loaded` event) |
 
 ---
 
-## Step 1: Create Custom HTML Tag (Listener)
+## Step 1: Deploy Listener Script (Drupal)
 
-**Location:** GTM → Tags → New → Custom HTML
+**Location:** Drupal → Content Block (global script block)
 
-**Tag Name:** `translation-tracker-listener.html`
+**File:** `translation-tracker-listener.html`
 
+The listener script is deployed via Drupal's content block system rather than GTM to keep more logic in Drupal.
 
-**Triggering:** All Pages
+**What it does:**
+- On page load: Fires `translate_feature_loaded` event with `translate_feature_available` boolean
+- On translation: Fires `page_translated` event with language info and `translation_source`
 
 ---
 
@@ -34,7 +41,7 @@ Track translation usage on lifeline.org.au using GTM and GA4 to answer:
 
 **Location:** GTM → Variables → User-Defined Variables → New
 
-Create these 4 variables:
+Create these 6 variables:
 
 ### Variable 1
 - **Name:** `DLV - translation_language_code`
@@ -56,22 +63,41 @@ Create these 4 variables:
 - **Type:** Data Layer Variable
 - **Data Layer Variable Name:** `translated_page_title`
 
+### Variable 5
+- **Name:** `DLV - translation_source`
+- **Type:** Data Layer Variable
+- **Data Layer Variable Name:** `translation_source`
+
+### Variable 6
+- **Name:** `DLV - translate_feature_available`
+- **Type:** Data Layer Variable
+- **Data Layer Variable Name:** `translate_feature_available`
+
 ---
 
-## Step 3: Create Custom Event Trigger
+## Step 3: Create Custom Event Triggers
 
 **Location:** GTM → Triggers → New
 
+### Trigger 1 (Translation Event)
 - **Name:** `CE - page_translated`
 - **Trigger Type:** Custom Event
 - **Event name:** `page_translated`
 - **This trigger fires on:** All Custom Events
 
+### Trigger 2 (Feature Availability Event)
+- **Name:** `CE - translate_feature_loaded`
+- **Trigger Type:** Custom Event
+- **Event name:** `translate_feature_loaded`
+- **This trigger fires on:** All Custom Events
+
 ---
 
-## Step 4: Create GA4 Event Tag
+## Step 4: Create GA4 Event Tags
 
 **Location:** GTM → Tags → New → Google Analytics: GA4 Event
+
+### Tag 1: Page Translated Event
 
 - **Name:** `GA4 - Page Translated`
 - **Configuration Tag:** (select your existing GA4 configuration tag)
@@ -85,8 +111,23 @@ Create these 4 variables:
 | `language_name` | `{{DLV - translation_language_name}}` |
 | `page_url` | `{{DLV - translated_page_url}}` |
 | `page_title` | `{{DLV - translated_page_title}}` |
+| `translation_source` | `{{DLV - translation_source}}` |
 
 **Triggering:** `CE - page_translated`
+
+### Tag 2: Feature Availability Event
+
+- **Name:** `GA4 - Translate Feature Loaded`
+- **Configuration Tag:** (select your existing GA4 configuration tag)
+- **Event Name:** `translate_feature_loaded`
+
+**Event Parameters:**
+
+| Parameter Name | Value |
+|---------------|-------|
+| `feature_available` | `{{DLV - translate_feature_available}}` |
+
+**Triggering:** `CE - translate_feature_loaded`
 
 ---
 
@@ -109,27 +150,60 @@ Create these 4 variables:
 - **Scope:** Event
 - **Event parameter:** `page_url`
 
+### Dimension 4
+- **Dimension name:** Translation Source
+- **Scope:** Event
+- **Event parameter:** `translation_source`
+- **Description:** `click` = on-site feature, `mutation` = browser extension
+
+### Dimension 5
+- **Dimension name:** Translate Feature Available
+- **Scope:** Event
+- **Event parameter:** `feature_available`
+- **Description:** Whether the translate dropdown was present on the page
+
 ---
 
 ## Step 6: Test with GTM Preview
 
 1. In GTM, click **Preview** button (top right)
 2. Enter `https://www.lifeline.org.au` and click Connect
-3. On the site, click the **Translate** dropdown
-4. Select a language (e.g., Mandarin)
+3. Verify the `translate_feature_loaded` event fires immediately on page load
+4. Click the **Translate** dropdown and select a language (e.g., Mandarin)
 5. In the GTM debug panel (Tag Assistant), verify:
-   - `page_translated` event appears in the left sidebar
-   - Click on it to see the data layer values
-   - The `GA4 - Page Translated` tag shows as "Fired"
+   - `translate_feature_loaded` event appears (on page load)
+   - `page_translated` event appears (after selecting language)
+   - Both GA4 tags show as "Fired"
 
-**Expected data layer output:**
+**Expected data layer output (on page load):**
+```json
+{
+  "event": "translate_feature_loaded",
+  "translate_feature_available": true
+}
+```
+
+**Expected data layer output (after translation - on-site feature):**
 ```json
 {
   "event": "page_translated",
   "translation_language_code": "zh-CN",
   "translation_language_name": "Mandarin 普通话",
   "translated_page_url": "/",
-  "translated_page_title": "Lifeline Australia - 13 11 14 - Crisis Support. Suicide Prevention."
+  "translated_page_title": "Lifeline Australia - 13 11 14 - Crisis Support. Suicide Prevention.",
+  "translation_source": "click"
+}
+```
+
+**Expected data layer output (browser extension translation):**
+```json
+{
+  "event": "page_translated",
+  "translation_language_code": "es",
+  "translation_language_name": "es",
+  "translated_page_url": "/",
+  "translated_page_title": "...",
+  "translation_source": "mutation"
 }
 ```
 
@@ -167,29 +241,35 @@ Once data is flowing, create a Looker dashboard with:
 - **Total translations** (count of `page_translated` events)
 - **Translation rate** (`page_translated` / `page_view` as percentage)
 - **Unique users translating** (users with at least one translation event)
+- **On-site vs browser extension split** (translations by `translation_source`)
+- **Feature availability rate** (pages where feature is on vs off)
 
 ### Dimensions to Break Down By
 - `language_code` / `language_name` - Which languages are most popular?
 - `page_url` - Which pages are translated most?
+- `translation_source` - On-site feature (`click`) vs browser extension (`mutation`)
+- `feature_available` - Was the translate dropdown present?
 - `date` - Trend over time
 
 ### Suggested Visualisations
 1. **Pie chart:** Translations by language
-2. **Bar chart:** Top 10 translated pages
-3. **Line chart:** Translations per day/week
-4. **Table:** Full breakdown with all dimensions
+2. **Pie chart:** Translations by source (on-site vs browser extension)
+3. **Bar chart:** Top 10 translated pages
+4. **Line chart:** Translations per day/week
+5. **Scorecard:** Feature availability rate (% of page views with feature available)
+6. **Table:** Full breakdown with all dimensions
 
 ---
 
 ## Checklist
 
-- [ ] Create Custom HTML tag with listener code
-- [ ] Create 4 Data Layer Variables
-- [ ] Create Custom Event trigger
-- [ ] Create GA4 Event tag
-- [ ] Register 3 custom dimensions in GA4
+- [ ] Deploy listener script to Drupal content block
+- [ ] Create 6 Data Layer Variables in GTM
+- [ ] Create 2 Custom Event triggers in GTM
+- [ ] Create 2 GA4 Event tags in GTM
+- [ ] Register 5 custom dimensions in GA4
 - [ ] Test with GTM Preview
 - [ ] Publish GTM container
 - [ ] Verify data in GA4 Realtime (after publishing)
 - [ ] Verify data in GA4 Events (24-48 hours later)
-- [ ] Build Looker dashboard
+- [ ] Build Looker dashboard with source segmentation
